@@ -352,10 +352,8 @@ cargarLocal();
 
 function borrarDatos() {
 
-    // Borrar almacenamiento
     localStorage.removeItem("huertaData");
 
-    // Reiniciar arreglos
     tempHistory = [];
     soilTempHistory = [];
     humHistory = [];
@@ -366,7 +364,6 @@ function borrarDatos() {
 
     startTime = Date.now();
 
-  // Restaurar tabla a su estado inicial
     document.getElementById("tabla").innerHTML = `
     <tr id="Linea__Tiempo"><th>TIEMPO (s)</th></tr>
     <tr id="Linea__Temp__Suelo"><th>TEMPERATURA SUELO (°C)</th></tr>
@@ -376,7 +373,6 @@ function borrarDatos() {
     <tr id="Linea__pH"><th class="tableH">NIVEL DE <br> pH</th></tr>
     `;
 
-    // Redibujar gráficas vacías para limpiar el canvas
     drawChart("tempChart", [tempHistory, soilTempHistory], ["orange","red"]);
     drawChart("humChart", [humHistory, soilHistory], ["blue","green"], 0, 100);
     drawChart("pHChart", [pHHistory], ["purple"], 0, 14);
@@ -649,15 +645,6 @@ void actualizarLCD() {
     lcd.print("ST:" + String(st) + "°C");
     lcd.setCursor(9, 1);
 }
-/* ------------------------------------------------------ PARPADEO DE LED ------------------------------------------------------ */
-// void parpadearLED() {
-//   unsigned long now = millis();
-//   if (now - tLED >= INT_LED) {
-//     tLED = now;
-//     estadoLED = !estadoLED;
-//     digitalWrite(led, estadoLED);
-//   }
-// }
 /* ------------------------------------------------------ ENCENDER MOTOR ------------------------------------------------------ */
 /* ------------------------------------------------------ motorActivo = false ------------------------------------------------------ */
 void controlarMotor() {

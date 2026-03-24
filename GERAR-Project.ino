@@ -13,8 +13,8 @@ LiquidCrystal_I2C lcd(0x27, 16, 2);
 DHTesp dht;
 
 /* ------------------ PINES ------------------ */
-int higrometro = 34;
-int sensor_pH = 35;
+int higrometro = 35;
+int sensor_uv = 12;
 int sensor_lluvia = 27;
 int DHTPin = 15;
 
@@ -41,19 +41,9 @@ float t = NAN;
 float st = NAN;
 float h = NAN;
 float s = NAN;
+float uv;
 int l = 0;
-int ms = 0;
-
-float lectura;
-float promedio;
-int i;
-
-float L7 = 3346.45;
-float L4 = 3030.22;
-
-float m;
-float b;
-float pH;
+float voltaje;
 
 /* ------------------------------------------------------ TIMERS ------------------------------------------------------ */
 unsigned long tSensores = 0;
@@ -77,7 +67,7 @@ bool smsTempEnviado = false;
 bool smsTempSueloEnviado = false;
 bool smsHumEnviado = false;
 bool smsLluviaEnviado = false;
-bool smsPHEnviado = false;
+bool smsUvEnviado = false;
 
 /* ------------------------------------------------------ WEB SERVER ------------------------------------------------------ */
 // const char* = a cadena de caracteres inmutables
@@ -149,7 +139,7 @@ h1{
     border: 2px solid #fff;
     border-radius: 10px;
 }
-#pHChart{
+#uvChart{
     width:100%;
     height:220px;
     display:block;
@@ -238,8 +228,8 @@ button{
 
     <div class="row">
         <div class="card" style="flex:1 1 140px">
-            <div>Nivel de pH</div>
-            <div id="pHValue" class="value">--</div>
+            <div>Radiacion UV</div>
+            <div id="uvValue" class="value">--</div>
         </div>
     </div>
 </div>
@@ -260,11 +250,11 @@ button{
     Verde = Humedad Suelo (%) 
 </div>
 
-<div class="card" id="grafica-pH">
-    <h2> GRAFICA DE pH </h2>
-    <canvas id="pHChart"></canvas>
+<div class="card" id="grafica-uv">
+    <h2> GRAFICA DE UV </h2>
+    <canvas id="uvChart"></canvas>
     <div class="legend">
-    Morado = Nivel de pH |
+    Morado = radiacion uv |
 </div>
 
 <div class="card, table">
@@ -285,8 +275,8 @@ button{
         <tr id="Linea__Hum__Ambiente">
             <th class="tableH">HUMEDAD <br> AMBIENTE (%)</th>
         </tr>
-        <tr id="Linea__pH">
-            <th class="tableH">NIVEL DE <br> pH</th>
+        <tr id="Linea__uv">
+            <th class="tableH">NIVEL DE <br> RADIACION UV</th>
         </tr>
     </table>
 </div>
@@ -300,7 +290,7 @@ let soilTempHistory = [];
 let humHistory = [];
 let soilHistory = [];
 
-let pHHistory = [];
+let uvHistory = [];
 let rainHistory = [];
 
 let timeHistory = [];
@@ -319,7 +309,7 @@ function guardarLocal() {
         soilHistory,
         timeHistory,
         rainHistory,
-        pHHistory,
+        uvHistory,
         tabla: document.getElementById("tabla").innerHTML
     };
     localStorage.setItem("huertaData", JSON.stringify(data));
@@ -336,7 +326,7 @@ function cargarLocal() {
     humHistory = data.humHistory || [];
     soilHistory = data.soilHistory || [];
     timeHistory = data.timeHistory || [];
-    pHHistory = data.pHHistory || [];
+    uvHistory = data.uvHistory || [];
     rainHistory = data.rainHistory || [];
 
     if(data.tabla) {
@@ -345,37 +335,41 @@ function cargarLocal() {
 
     drawChart("tempChart", [tempHistory, soilTempHistory], ["orange","red"], 0, 1024);
     drawChart("humChart", [humHistory, soilHistory], ["blue","green"], 0, 100);
-    drawChart("pHChart", [pHHistory], ["purple"], 0, 14);
+    drawChart("uvChart", [uvHistory], ["purple"], 0, 14);
 }
 
 cargarLocal();
 
 function borrarDatos() {
 
+    // Borrar almacenamiento
     localStorage.removeItem("huertaData");
 
+    // Reiniciar arreglos
     tempHistory = [];
     soilTempHistory = [];
     humHistory = [];
     soilHistory = [];
-    pHHistory = [];
+    uvHistory = [];
     rainHistory = [];
     timeHistory = [];
 
     startTime = Date.now();
 
+  // Restaurar tabla a su estado inicial
     document.getElementById("tabla").innerHTML = `
     <tr id="Linea__Tiempo"><th>TIEMPO (s)</th></tr>
     <tr id="Linea__Temp__Suelo"><th>TEMPERATURA SUELO (°C)</th></tr>
     <tr id="Linea__Temp__Ambiente"><th>TEMPERATURA AMBIENTE (°C)</th></tr>
     <tr id="Linea__Hum__Suelo"><th>HUMEDAD SUELO (%)</th></tr>
     <tr id="Linea__Hum__Ambiente"><th>HUMEDAD AMBIENTE (%)</th></tr>
-    <tr id="Linea__pH"><th class="tableH">NIVEL DE <br> pH</th></tr>
+    <tr id="Linea__uv"><th class="tableH">NIVEL DE <br> RADIACION UV</th></tr>
     `;
 
+    // Redibujar gráficas vacías para limpiar el canvas
     drawChart("tempChart", [tempHistory, soilTempHistory], ["orange","red"]);
     drawChart("humChart", [humHistory, soilHistory], ["blue","green"], 0, 100);
-    drawChart("pHChart", [pHHistory], ["purple"], 0, 14);
+    drawChart("uvChart", [uvHistory], ["purple"], 0, 14);
 }
 
 const socket = new WebSocket(`ws://${location.hostname}:81`);
@@ -388,36 +382,36 @@ socket.onmessage = function(event) {
     const s  = parseFloat(d.soil);
     const st = parseFloat(d.sTemperature);
     const l = d.rain;
-    const pH = parseFloat(d.pH);
+    const uv = parseFloat(d.uv);
 
     const elapsedSeconds = ((Date.now() - startTime) / 1000).toFixed(1);
     const segundos = ((Date.now() - startTime) / 1000).toFixed(0);
 
-    if(!isNaN(t) && !isNaN(h) && !isNaN(s) && !isNaN(st)) {
+    if(!isNaN(t) && !isNaN(h) && !isNaN(s) && !isNaN(st) && !isNaN(uv)) {
 
     addPoint(tempHistory, t);
     addPoint(humHistory, h);
     addPoint(soilHistory, s);
     addPoint(soilTempHistory, st);
-    addPoint(pHHistory, pH);
+    addPoint(uvHistory, uv);
     addPoint(timeHistory, elapsedSeconds);
 
     document.getElementById('tempValue').innerText = t.toFixed(2) + ' °C';
     document.getElementById('humValue').innerText  = h.toFixed(2) + ' %';
     document.getElementById('soilValue').innerText = s.toFixed(2) + ' %';
     document.getElementById('soilTempValue').innerText = st.toFixed(2) + ' °C';
-    document.getElementById('pHValue').innerText = pH.toFixed(2);
+    document.getElementById('uvValue').innerText = uv.toFixed(2);
 
     drawChart("tempChart", [tempHistory, soilTempHistory], ["orange","red"]);
     drawChart("humChart", [humHistory, soilHistory], ["blue","green"], 0, 100);
-    drawChart("pHChart", [pHHistory], ["purple"], 0, 14);
+    drawChart("uvChart", [uvHistory], ["purple"], 0, 14);
 
     añadirTabla("Linea__Tiempo", segundos);
     añadirTabla("Linea__Temp__Suelo", st.toFixed(1));
     añadirTabla("Linea__Temp__Ambiente", t.toFixed(1));
     añadirTabla("Linea__Hum__Suelo", s.toFixed(1));
     añadirTabla("Linea__Hum__Ambiente", h.toFixed(1));
-    añadirTabla("Linea__pH", pH.toFixed(1));
+    añadirTabla("Linea__uv", uv.toFixed(1));
 
     if (l === 1) {
           document.getElementById('rainValue').innerText = "SI";
@@ -524,8 +518,8 @@ void enviarDatosWebSocket() {
     json += isnan(st) ? "null" : String(st,2);
     json += ",";
 
-    json += "\"pH\":";
-    json += isnan(pH) ? "null" : String(pH,2);
+    json += "\"uv\":";
+    json += isnan(uv) ? "null" : String(uv,2);
     json += ",";
 
     json += "\"rain\":";
@@ -566,7 +560,7 @@ void setup() {
 
     dht.setup(DHTPin, DHTesp::DHT22);
 
-    pinMode(sensor_pH, INPUT);
+    pinMode(sensor_uv, INPUT);
 
     pinMode(higrometro, INPUT);
     pinMode(sensor_lluvia, INPUT);
@@ -622,16 +616,9 @@ void leerSensores() {
     s = constrain(s, 0, 100);
     l = digitalRead(sensor_lluvia);
 
-    promedio = 0;
-    for (i=0; i<10; i++){
-        lectura = analogRead(sensor_pH);
-        promedio += lectura;
-        delay(10);
-    }
-    promedio = promedio/10;
-    m = (7.0 - 4.0) / (L7 - L4);
-    b = 7.0 - m * L7;
-    pH = m * promedio + b;
+    voltaje = analogRead(sensor_uv);
+    uv = voltaje * (3.3 / 4095.0);
+    uv = uv * 10;
 }
 /* ------------------------------------------------------ ACTUALIZAR LCD ------------------------------------------------------ */
 void actualizarLCD() {
@@ -643,13 +630,12 @@ void actualizarLCD() {
     lcd.print("S:" + String(s) + "%");
     lcd.setCursor(9, 1);
     lcd.print("ST:" + String(st) + "°C");
-    lcd.setCursor(9, 1);
 }
 /* ------------------------------------------------------ ENCENDER MOTOR ------------------------------------------------------ */
 /* ------------------------------------------------------ motorActivo = false ------------------------------------------------------ */
 void controlarMotor() {
     unsigned long now = millis();
-    if (s >= 40 && !motorActivo) {
+    if (s <= 50 && !motorActivo) {
         motorActivo = true;
         tMotor = now;
         digitalWrite(drive1, HIGH);
@@ -724,12 +710,12 @@ void alertas() {
         smsHumEnviado = false;
     }
 
-    if ((pH >= 11 || pH <= 3) && !smsPHEnviado) {
-    enviarSMS("El pH esta desequilibrado en tu huerta");
-    smsPHEnviado = true;
+    if ((uv >= 11 || uv <= 3) && !smsUvEnviado) {
+    enviarSMS("La radiacion esta peligrosa en tu huerta");
+    smsUvEnviado = true;
     }
-    if ((pH > 3 && pH < 11) && smsPHEnviado) {
-    smsPHEnviado = false;
+    if ((uv > 3 && uv < 11) && smsUvEnviado) {
+    smsUvEnviado = false;
     }
 
 
